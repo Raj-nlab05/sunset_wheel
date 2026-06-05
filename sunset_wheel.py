@@ -57,12 +57,13 @@ screen = pygame.display.set_mode((WIN_W, WIN_H))
 pygame.display.set_caption("Sunset Pastel Reaction Wheel")
 clock = pygame.time.Clock()
 
-font_sm   = pygame.font.SysFont("Segoe UI", 18)
-font_md   = pygame.font.SysFont("Segoe UI", 24)
-font_lg   = pygame.font.SysFont("Segoe UI", 32)
-font_xl   = pygame.font.SysFont("Segoe UI", 46)
-font_note = pygame.font.SysFont("Segoe UI", 26, bold=True)
-font_emoji = pygame.font.SysFont("Segoe UI Emoji", 40)
+font_sm      = pygame.font.SysFont("Segoe UI", 18)
+font_md      = pygame.font.SysFont("Segoe UI", 24)
+font_lg      = pygame.font.SysFont("Segoe UI", 32)
+font_xl      = pygame.font.SysFont("Segoe UI", 46)
+font_note    = pygame.font.SysFont("Segoe UI", 26, bold=True)
+font_emoji   = pygame.font.SysFont("Segoe UI Emoji", 40)
+font_emoji_xl = pygame.font.SysFont("Segoe UI Emoji", 46)
 
 # ─────────────────────────────────────────────────────────
 # GAME STATE
@@ -88,6 +89,11 @@ target_idx      = -1
 flash_slices = [0] * N_SLICES
 
 SLICE_LABELS = ["C", "D", "E", "F", "G", "A", "B", "C2"]
+
+WARNING_DURATION    = 5000
+warning_start_time  = None
+show_warning_screen = True
+
 # ─────────────────────────────────────────────────────────
 # DIP GESTURE
 # ─────────────────────────────────────────────────────────
@@ -135,10 +141,13 @@ hand_options = HandLandmarkerOptions(
 )
 
 hand_landmarker = HandLandmarker.create_from_options(hand_options)
-cam = cv2.VideoCapture(0)
+cam = None
 
 
 def get_hands():
+    if cam is None:
+        return None, None, False, False, None
+
     ret, frame = cam.read()
     if not ret:
         return None, None, False, False, None
@@ -533,6 +542,26 @@ def draw_rhythm_summary():
     draw_text_c(screen, rhythm_msg, font_emoji, rhythm_color, WIN_W//2, 300)
 
 
+def draw_warning_screen():
+    screen.fill(BG_COLOR)
+    header = "⚠️ WARNING ⚠️"
+    message = (
+        "This application is not intended to diagnose, treat, cure, or replace professional\n"
+        "medical treatment for Attention-Deficit/Hyperactivity Disorder (ADHD).\n"
+        "It is designed solely as a supportive tool to complement existing treatment\n"
+        "and management strategies."
+    )
+
+    draw_text_c(screen, header, font_emoji_xl, SOFT_YELLOW, WIN_W//2, 180)
+
+    lines = message.split("\n")
+    for i, line in enumerate(lines):
+        draw_text_c(screen, line, font_md, WHITE_SOFT, WIN_W//2, 260 + i * 34)
+
+    draw_text_c(screen, "Starting soon...", font_sm, WHITE_DIM, WIN_W//2, WIN_H - 60)
+    pygame.display.flip()
+
+
 def draw_summary():
     screen.fill(BG_COLOR)
     draw_text_c(screen, "GAME SUMMARY", font_xl, SOFT_YELLOW, WIN_W//2, 80)
@@ -551,12 +580,28 @@ def main():
     global target_idx, feedback_timer
     global reaction_feedback_timer, reaction_ready, reaction_target
     global last_beat_time, webcam_enabled
+    global cam, warning_start_time, show_warning_screen
 
     summary_mode = False
 
     while True:
         clock.tick(FPS)
         now = pygame.time.get_ticks()
+
+        if show_warning_screen:
+            if warning_start_time is None:
+                warning_start_time = now
+
+            draw_warning_screen()
+
+            if now - warning_start_time >= WARNING_DURATION:
+                show_warning_screen = False
+                cam = cv2.VideoCapture(0)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+            continue
 
         # ─────────────────────────────────────────
         # SUMMARY SCREEN
