@@ -68,6 +68,18 @@ font_emoji_xl = pygame.font.SysFont("Segoe UI Emoji", 46)
 # ─────────────────────────────────────────────────────────
 # GAME STATE
 # ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# LOGIN SYSTEM
+# ─────────────────────────────────────────────────────────
+
+login_active = True
+login_username = ""
+login_password = ""
+login_error = ""
+login_field = "username"   # or "password"
+
+VALID_USERNAME = "krish"
+VALID_PASSWORD = "1234"
 
 mode    = "rhythm"
 playing = False
@@ -93,6 +105,9 @@ SLICE_LABELS = ["C", "D", "E", "F", "G", "A", "B", "C2"]
 WARNING_DURATION    = 5000
 warning_start_time  = None
 show_warning_screen = True
+LOGIN_FADE_SPEED = 12
+login_success = False
+login_fade = 255
 
 # ─────────────────────────────────────────────────────────
 # DIP GESTURE
@@ -191,6 +206,12 @@ def get_hands():
 def draw_text_c(surf, text, font, color, cx, cy):
     img  = font.render(text, True, color)
     rect = img.get_rect(center=(cx, cy))
+    surf.blit(img, rect)
+
+
+def draw_text_left(surf, text, font, color, x, y):
+    img = font.render(text, True, color)
+    rect = img.get_rect(topleft=(x, y))
     surf.blit(img, rect)
 
 
@@ -542,6 +563,61 @@ def draw_rhythm_summary():
     draw_text_c(screen, rhythm_msg, font_emoji, rhythm_color, WIN_W//2, 300)
 
 
+def draw_login_screen():
+    # Clear background then draw centered panel
+    screen.fill(BG_COLOR)
+    panel_w, panel_h = 640, 360
+    px = (WIN_W - panel_w) // 2
+    py = (WIN_H - panel_h) // 2
+
+    padding = 28
+    # Panel
+    pygame.draw.rect(screen, PANEL_COLOR, (px, py, panel_w, panel_h), border_radius=12)
+    pygame.draw.rect(screen, (60, 50, 90), (px, py, panel_w, panel_h), 2, border_radius=12)
+
+    # Title
+    draw_text_c(screen, "Welcome — Sunset Wheel", font_xl, SOFT_YELLOW, WIN_W//2, py + 44)
+
+    # Username label + field
+    ux = px + padding
+    uy = py + 110
+    box_w = panel_w - padding * 2
+    box_h = 48
+    draw_text_left(screen, "Username", font_sm, WHITE_DIM, ux, uy - 26)
+    is_user_active = (login_field == "username")
+    pygame.draw.rect(screen, (30,24,44), (ux, uy, box_w, box_h), border_radius=8)
+    border_col = WARM_PINK if is_user_active else (70,60,100)
+    pygame.draw.rect(screen, border_col, (ux, uy, box_w, box_h), 3, border_radius=8)
+    display_user = login_username if login_username else ""
+    draw_text_left(screen, display_user or "", font_md, WHITE_SOFT if login_username else WHITE_FAINT, ux + 12, uy + 10)
+
+    # Password label + field
+    px2 = ux
+    py2 = uy + box_h + 28
+    draw_text_left(screen, "Password", font_sm, WHITE_DIM, px2, py2 - 26)
+    is_pass_active = (login_field == "password")
+    pygame.draw.rect(screen, (30,24,44), (px2, py2, box_w, box_h), border_radius=8)
+    border_col2 = WARM_PINK if is_pass_active else (70,60,100)
+    pygame.draw.rect(screen, border_col2, (px2, py2, box_w, box_h), 3, border_radius=8)
+    masked = "".join(["*" for _ in login_password])
+    draw_text_left(screen, masked or "", font_md, WHITE_SOFT if login_password else WHITE_FAINT, px2 + 12, py2 + 10)
+
+    # Error message
+    if login_error:
+        draw_text_c(screen, login_error, font_md, SOFT_ORANGE, WIN_W//2, py2 + box_h + 40)
+
+    # Instructions
+    draw_text_c(screen, "Press Enter to submit — Tab to switch fields", font_sm, WHITE_DIM, WIN_W//2, py + panel_h - 36)
+
+    # Fade overlay during transition (drawn on top)
+    if login_success:
+        fade_surf = pygame.Surface((WIN_W, WIN_H))
+        fade_surf.set_alpha(login_fade)
+        fade_surf.fill(BG_COLOR)
+        screen.blit(fade_surf, (0,0))
+    pygame.display.flip()
+
+
 def draw_warning_screen():
     screen.fill(BG_COLOR)
     header = "⚠️ WARNING ⚠️"
@@ -581,6 +657,8 @@ def main():
     global reaction_feedback_timer, reaction_ready, reaction_target
     global last_beat_time, webcam_enabled
     global cam, warning_start_time, show_warning_screen
+    global login_active, login_username, login_password, login_error, login_field
+    global login_success, login_fade, LOGIN_FADE_SPEED
 
     summary_mode = False
 
@@ -588,6 +666,55 @@ def main():
         clock.tick(FPS)
         now = pygame.time.get_ticks()
 
+        # ─────────────────────────────────────────
+        # LOGIN SCREEN
+        # ─────────────────────────────────────────
+        if login_active:
+            draw_login_screen()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_TAB:
+                        login_field = "password" if login_field == "username" else "username"
+                    elif event.key == pygame.K_BACKSPACE:
+                        if login_field == "username":
+                            login_username = login_username[:-1]
+                        else:
+                            login_password = login_password[:-1]
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        # Submit
+                        if login_username == VALID_USERNAME and login_password == VALID_PASSWORD:
+                            login_error = ""
+                            login_success = True
+                        else:
+                            login_error = "Invalid username or password"
+                    else:
+                        ch = event.unicode
+                        if ch and ord(ch) >= 32:
+                            if login_field == "username":
+                                login_username = (login_username + ch)[:32]
+                            else:
+                                login_password = (login_password + ch)[:32]
+
+            # handle fade transition after success
+            if login_success:
+                login_fade = max(0, login_fade - LOGIN_FADE_SPEED)
+                if login_fade == 0:
+                    login_active = False
+                    show_warning_screen = True
+                    warning_start_time = None
+                        
+                    login_success = False
+                    login_fade = 255
+
+            continue
+
+        # ─────────────────────────────────────────
+        # WARNING SCREEN
+        # ─────────────────────────────────────────
         if show_warning_screen:
             if warning_start_time is None:
                 warning_start_time = now
